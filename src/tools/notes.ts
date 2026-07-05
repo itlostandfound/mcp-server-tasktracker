@@ -2,11 +2,23 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { TaskTrackerClient } from "../client.js";
 import { textResult } from "../toolHelpers.js";
+import { toTipTapDoc } from "../richText.js";
 import type { NoteResponse } from "../types.js";
 
 const contentSchema = z
-  .record(z.string(), z.unknown())
-  .describe("Rich-text note content as a TipTap JSON document");
+  .union([z.string(), z.record(z.string(), z.unknown())])
+  .describe(
+    "Note content. Pass a plain string of Markdown or plain text (recommended) and it is converted " +
+      "to the underlying TipTap rich-text format automatically. Supported Markdown: paragraphs, " +
+      "# headings, **bold**, _italic_, `inline code`, [links](url), bullet (-) and numbered (1.) lists, " +
+      "> blockquotes, ``` fenced code blocks ```, and hard line breaks. Unsupported constructs (tables, " +
+      "images, raw HTML, task-list checkboxes) are not dropped — they degrade to plain text so nothing " +
+      "is silently lost, but they won't render as their intended rich element. " +
+      'Example: "Met with the vendor.\\n\\n- Discussed pricing\\n- Follow up next week". ' +
+      "Alternatively, pass a raw TipTap JSON document directly, e.g. " +
+      '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Met with the vendor."}]}]} ' +
+      "— useful for content the Markdown converter can't express exactly.",
+  );
 
 export function registerNoteTools(server: McpServer, client: TaskTrackerClient): void {
   server.registerTool(
@@ -38,10 +50,10 @@ export function registerNoteTools(server: McpServer, client: TaskTrackerClient):
         note_date: z.string().optional().describe("Optional date (YYYY-MM-DD), defaults to today"),
       },
     },
-    async ({ task_id, ...body }) => {
+    async ({ task_id, content, ...body }) => {
       const result = await client.post<NoteResponse>(
         `/api/v1/tasks/${encodeURIComponent(task_id)}/notes`,
-        body,
+        { content: toTipTapDoc(content), ...body },
       );
       return textResult(result);
     },
@@ -74,8 +86,11 @@ export function registerNoteTools(server: McpServer, client: TaskTrackerClient):
         content: contentSchema.optional(),
       },
     },
-    async ({ id, ...body }) => {
-      const result = await client.patch<NoteResponse>(`/api/v1/notes/${encodeURIComponent(id)}`, body);
+    async ({ id, content, ...body }) => {
+      const result = await client.patch<NoteResponse>(`/api/v1/notes/${encodeURIComponent(id)}`, {
+        ...body,
+        ...(content !== undefined ? { content: toTipTapDoc(content) } : {}),
+      });
       return textResult(result);
     },
   );

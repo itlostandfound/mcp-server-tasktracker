@@ -150,6 +150,8 @@ export interface ProjectStepResponse {
 
 export interface ProjectStepCreateInput {
   title: string;
+  content?: Record<string, unknown>;
+  content_text?: string;
 }
 
 export interface ProjectStepUpdateInput {

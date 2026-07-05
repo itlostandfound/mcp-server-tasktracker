@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-tasktracker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server exposing the Task-Tracker REST API as tools for any MCP-compatible AI agent",
   "type": "module",
   "license": "MIT",
@@ -22,9 +22,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "markdown-it": "^14.3.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",

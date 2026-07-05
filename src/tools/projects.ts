@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { TaskTrackerClient } from "../client.js";
 import { buildQuery, textResult } from "../toolHelpers.js";
+import { extractPlainText, toTipTapDoc } from "../richText.js";
 import type {
   ProjectResponse,
   ProjectStepReferenceResponse,
@@ -9,8 +10,33 @@ import type {
 } from "../types.js";
 
 const contentSchema = z
-  .record(z.string(), z.unknown())
-  .describe("Rich-text step content as a TipTap JSON document");
+  .union([z.string(), z.record(z.string(), z.unknown())])
+  .describe(
+    "Step content. Pass a plain string of Markdown or plain text (recommended) and it is converted " +
+      "to the underlying TipTap rich-text format automatically. Supported Markdown: paragraphs, " +
+      "# headings, **bold**, _italic_, `inline code`, [links](url), bullet (-) and numbered (1.) lists, " +
+      "> blockquotes, ``` fenced code blocks ```, and hard line breaks. Unsupported constructs (tables, " +
+      "images, raw HTML, task-list checkboxes) are not dropped — they degrade to plain text so nothing " +
+      "is silently lost, but they won't render as their intended rich element. " +
+      'Example: "Goal: create the widget\\n\\n## Sub-tasks\\n\\n1. Create directory\\n2. Init package.json". ' +
+      "Alternatively, pass a raw TipTap JSON document directly, e.g. " +
+      '{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","marks":[{"type":"bold"}],"text":"Goal: "},{"type":"text","text":"do the thing"}]}]} ' +
+      "— useful for content the Markdown converter can't express exactly.",
+  );
+
+/**
+ * Converts `content` to TipTap JSON and, unless the caller already supplied
+ * content_text explicitly, derives it from the converted doc — so callers
+ * never have to write the same text twice.
+ */
+function buildContentFields(
+  content: string | Record<string, unknown> | undefined,
+  content_text: string | undefined,
+): { content?: Record<string, unknown>; content_text?: string } {
+  if (content === undefined) return {};
+  const doc = toTipTapDoc(content);
+  return { content: doc, content_text: content_text ?? extractPlainText(doc) };
+}
 
 export function registerProjectTools(server: McpServer, client: TaskTrackerClient): void {
   // ── Projects ──────────────────────────────────────────────────────────────
@@ -122,12 +148,17 @@ export function registerProjectTools(server: McpServer, client: TaskTrackerClien
       inputSchema: {
         id: z.string().describe("Project id"),
         title: z.string().max(500),
+        content: contentSchema.optional(),
+        content_text: z
+          .string()
+          .optional()
+          .describe("Plain-text mirror of content, used for search. Derived from content if omitted."),
       },
     },
-    async ({ id, ...body }) => {
+    async ({ id, content, content_text, ...body }) => {
       const result = await client.post<ProjectStepResponse>(
         `/api/v1/projects/${encodeURIComponent(id)}/steps`,
-        body,
+        { ...body, ...buildContentFields(content, content_text) },
       );
       return textResult(result);
     },
@@ -163,13 +194,16 @@ export function registerProjectTools(server: McpServer, client: TaskTrackerClien
         step_id: z.string().describe("Step id"),
         title: z.string().max(500).optional(),
         content: contentSchema.optional(),
-        content_text: z.string().optional().describe("Plain-text mirror of content, used for search"),
+        content_text: z
+          .string()
+          .optional()
+          .describe("Plain-text mirror of content, used for search. Derived from content if omitted."),
       },
     },
-    async ({ id, step_id, ...body }) => {
+    async ({ id, step_id, content, content_text, ...body }) => {
       const result = await client.patch<ProjectStepResponse>(
         `/api/v1/projects/${encodeURIComponent(id)}/steps/${encodeURIComponent(step_id)}`,
-        body,
+        { ...body, ...buildContentFields(content, content_text) },
       );
       return textResult(result);
     },

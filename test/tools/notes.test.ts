@@ -64,6 +64,49 @@ describe("note tools", () => {
     );
   });
 
+  it("create_note converts a Markdown string content into a TipTap doc", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "note-1" }));
+
+    await tools.get("create_note")!.handler({ task_id: "task-1", content: "hello **world**" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/tasks/task-1/notes",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "hello " },
+                  { type: "text", text: "world", marks: [{ type: "bold" }] },
+                ],
+              },
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("update_note converts a Markdown string content into a TipTap doc", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "note-1" }));
+
+    await tools.get("update_note")!.handler({ id: "note-1", content: "plain text" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/notes/note-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "plain text" }] }] },
+        }),
+      }),
+    );
+  });
+
   it("delete_note calls DELETE on /api/v1/notes/{id}", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(204));
 

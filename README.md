@@ -143,6 +143,30 @@ Every tool mirrors a Task-Tracker API endpoint 1:1 — no invented aggregate ope
 | `update_step_reference` | Update a reference link |
 | `delete_step_reference` | Delete a reference link |
 
+### Rich-text content (notes & project steps)
+
+`create_note`, `update_note`, `add_project_step`, and `update_project_step` all take a `content`
+field. Task-Tracker stores this internally as a TipTap JSON document, but you don't need to
+construct that by hand — pass a plain string of Markdown or plain text and it's converted
+automatically:
+
+```json
+{ "content": "Goal: create the widget\n\n## Sub-tasks\n\n1. Create directory\n2. Init package.json" }
+```
+
+Supported Markdown: paragraphs, `#` headings, `**bold**`, `_italic_`, `` `inline code` ``,
+`[links](url)`, bullet (`-`) and numbered (`1.`) lists, `>` blockquotes, fenced code blocks, and
+hard line breaks. Constructs the converter doesn't understand (tables, images, raw HTML,
+task-list checkboxes) are never silently dropped — they degrade to plain text so the content
+survives, just not as their intended rich element.
+
+If you need something the converter can't express exactly, you can still pass a raw TipTap JSON
+document directly instead of a string — it's stored as-is.
+
+For project steps, `content_text` (used for search) is derived automatically from `content` when
+omitted, so you only need to write the text once. Pass `content_text` explicitly if you want the
+search index to see different text than what's rendered.
+
 ## Error handling
 
 - **Connection failures** (Task-Tracker unreachable): returned as a clear message naming the configured URL, not a stack trace.

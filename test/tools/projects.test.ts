@@ -69,6 +69,64 @@ describe("project tools", () => {
     );
   });
 
+  it("add_project_step accepts content at creation time and converts Markdown to a TipTap doc", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1" }));
+
+    await tools.get("add_project_step")!.handler({
+      id: "proj-1",
+      title: "Set up repo",
+      content: "hello **world**",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/projects/proj-1/steps",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          title: "Set up repo",
+          content: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  { type: "text", text: "hello " },
+                  { type: "text", text: "world", marks: [{ type: "bold" }] },
+                ],
+              },
+            ],
+          },
+          content_text: "hello world",
+        }),
+      }),
+    );
+  });
+
+  it("add_project_step respects an explicit content_text instead of deriving it", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1" }));
+
+    await tools.get("add_project_step")!.handler({
+      id: "proj-1",
+      title: "Set up repo",
+      content: "hello **world**",
+      content_text: "custom search text",
+    });
+
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(options.body as string).content_text).toBe("custom search text");
+  });
+
+  it("add_project_step omits content entirely when not provided", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1" }));
+
+    await tools.get("add_project_step")!.handler({ id: "proj-1", title: "Set up repo" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/projects/proj-1/steps",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ title: "Set up repo" }) }),
+    );
+  });
+
   it("add_step_reference nests project id and step id into the references path", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "ref-1" }));
 
@@ -96,6 +154,52 @@ describe("project tools", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/projects/proj-1/steps/step-1/references/ref-1",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("update_project_step converts a Markdown string content into a TipTap doc", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "step-1" }));
+
+    await tools.get("update_project_step")!.handler({
+      id: "proj-1",
+      step_id: "step-1",
+      content: "## Sub-tasks\n\n1. Create directory",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/projects/proj-1/steps/step-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          content: {
+            type: "doc",
+            content: [
+              { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Sub-tasks" }] },
+              {
+                type: "orderedList",
+                content: [
+                  {
+                    type: "listItem",
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Create directory" }] }],
+                  },
+                ],
+              },
+            ],
+          },
+          content_text: "Sub-tasks\nCreate directory",
+        }),
+      }),
+    );
+  });
+
+  it("update_project_step leaves content untouched when omitted", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { id: "step-1" }));
+
+    await tools.get("update_project_step")!.handler({ id: "proj-1", step_id: "step-1", title: "Renamed" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/projects/proj-1/steps/step-1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ title: "Renamed" }) }),
     );
   });
 
