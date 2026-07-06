@@ -69,8 +69,24 @@ describe("project tools", () => {
     );
   });
 
+  const helloWorldDoc = {
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "hello " },
+          { type: "text", text: "world", marks: [{ type: "bold" }] },
+        ],
+      },
+    ],
+  };
+
   it("add_project_step accepts content at creation time and converts Markdown to a TipTap doc", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1" }));
+    // Simulates a Task-Tracker version whose create endpoint honors content.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, { id: "step-1", content: helloWorldDoc, content_text: "hello world" }),
+    );
 
     await tools.get("add_project_step")!.handler({
       id: "proj-1",
@@ -78,32 +94,20 @@ describe("project tools", () => {
       content: "hello **world**",
     });
 
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/projects/proj-1/steps",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({
-          title: "Set up repo",
-          content: {
-            type: "doc",
-            content: [
-              {
-                type: "paragraph",
-                content: [
-                  { type: "text", text: "hello " },
-                  { type: "text", text: "world", marks: [{ type: "bold" }] },
-                ],
-              },
-            ],
-          },
-          content_text: "hello world",
-        }),
+        body: JSON.stringify({ title: "Set up repo", content: helloWorldDoc, content_text: "hello world" }),
       }),
     );
   });
 
   it("add_project_step respects an explicit content_text instead of deriving it", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1" }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(201, { id: "step-1", content: helloWorldDoc, content_text: "custom search text" }),
+    );
 
     await tools.get("add_project_step")!.handler({
       id: "proj-1",
@@ -114,6 +118,32 @@ describe("project tools", () => {
 
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(options.body as string).content_text).toBe("custom search text");
+  });
+
+  it("add_project_step patches content in when the backend silently drops it on create", async () => {
+    // Simulates a Task-Tracker version whose create endpoint ignores content
+    // (its ProjectStepCreate schema only ever accepted title), echoing back
+    // an empty doc instead of what was sent.
+    fetchMock.mockResolvedValueOnce(jsonResponse(201, { id: "step-1", content: {}, content_text: null }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(200, { id: "step-1", content: helloWorldDoc, content_text: "hello world" }),
+    );
+
+    await tools.get("add_project_step")!.handler({
+      id: "proj-1",
+      title: "Set up repo",
+      content: "hello **world**",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/projects/proj-1/steps/step-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ content: helloWorldDoc, content_text: "hello world" }),
+      }),
+    );
   });
 
   it("add_project_step omits content entirely when not provided", async () => {

@@ -38,6 +38,10 @@ function buildContentFields(
   return { content: doc, content_text: content_text ?? extractPlainText(doc) };
 }
 
+function contentEquals(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export function registerProjectTools(server: McpServer, client: TaskTrackerClient): void {
   // ── Projects ──────────────────────────────────────────────────────────────
 
@@ -156,10 +160,23 @@ export function registerProjectTools(server: McpServer, client: TaskTrackerClien
       },
     },
     async ({ id, content, content_text, ...body }) => {
+      const contentFields = buildContentFields(content, content_text);
       const result = await client.post<ProjectStepResponse>(
         `/api/v1/projects/${encodeURIComponent(id)}/steps`,
-        { ...body, ...buildContentFields(content, content_text) },
+        { ...body, ...contentFields },
       );
+      // Some Task-Tracker versions silently ignore content/content_text on
+      // create (their ProjectStepCreate schema only ever accepted title).
+      // Detect that by comparing the echoed content back and, if it didn't
+      // take, patch it in immediately — so add_project_step still only
+      // costs the caller one logical call regardless of backend version.
+      if (contentFields.content !== undefined && !contentEquals(result.content, contentFields.content)) {
+        const patched = await client.patch<ProjectStepResponse>(
+          `/api/v1/projects/${encodeURIComponent(id)}/steps/${encodeURIComponent(result.id)}`,
+          contentFields,
+        );
+        return textResult(patched);
+      }
       return textResult(result);
     },
   );
