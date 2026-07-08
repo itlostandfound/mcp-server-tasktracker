@@ -104,7 +104,7 @@ export class TaskTrackerClient {
 
       if (response.status === 401) {
         throw new TaskTrackerError(
-          "Authentication failed — check TASKTRACKER_API_TOKEN.",
+          "Authentication failed — the Task-Tracker token provided in the Authorization header was rejected.",
           "auth",
           401,
         );

@@ -4,78 +4,87 @@ An MCP (Model Context Protocol) server for AI integration into [Task-Tracker](ht
 
 It exposes the full Task-Tracker REST API — trackers, tasks, notes, checklists, and projects (with steps and references) — as MCP tools, so any MCP-compatible AI agent (Claude Desktop, Claude Code, or others) can manage your Task-Tracker instance conversationally, with the same capabilities as the web dashboard.
 
-This is a standalone companion project, not published to any package registry. Clone it, point it at your own running Task-Tracker instance, and wire it into your MCP client's configuration.
+This server is designed to run **remotely** — one long-running instance (typically in Docker) that any number of MCP clients connect to over HTTP, each authenticating with their own Task-Tracker token. It does not run as a local subprocess of your MCP client.
 
 ## Requirements
 
-- Node.js 18+
-- A running [Task-Tracker](https://github.com/itlostandfound/Task-Tracker) instance you can reach over HTTP
-- That instance's `API_SECRET_TOKEN` (see Task-Tracker's own `.env` configuration)
+- [Docker](https://docs.docker.com/get-docker/) (recommended) **or** Node.js 18+, to run the server itself somewhere reachable over HTTP
+- A running [Task-Tracker](https://github.com/itlostandfound/Task-Tracker) instance the server can reach over HTTP
+- A Task-Tracker `API_SECRET_TOKEN` for each person/client that will connect (see Task-Tracker's own `.env` configuration) — this token is supplied by each **client**, not configured on the server (see [Configuration](#configuration))
 
 ## Install
+
+### Docker (recommended)
+
+Pull the latest image from GitHub Container Registry and run it as a long-lived service:
+
+```bash
+docker pull ghcr.io/itlostandfound/mcp-server-tasktracker:latest
+docker run -d --name mcp-server-tasktracker \
+  -p 3000:3000 \
+  -e TASKTRACKER_API_URL=http://your-tasktracker-host:8000 \
+  ghcr.io/itlostandfound/mcp-server-tasktracker:latest
+```
+
+Note: if Task-Tracker runs on the *same* host as this container, `localhost` inside the container refers to the container itself, not the host. Use `http://host.docker.internal:8000` (Docker Desktop) or `--add-host=host.docker.internal:host-gateway` (Linux) instead.
+
+### From source
 
 ```bash
 git clone https://github.com/itlostandfound/mcp-server-tasktracker.git
 cd mcp-server-tasktracker
 npm install
 npm run build
+TASKTRACKER_API_URL=http://localhost:8000 npm start
 ```
-
-This produces a compiled server at `dist/index.js`.
 
 ## Configuration
 
-The server reads its connection details from environment variables — set these in your MCP client's configuration, not in a committed file:
+The server itself only needs to know where Task-Tracker lives — it holds no Task-Tracker credential of its own:
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `TASKTRACKER_API_URL` | Yes | Base URL of your running Task-Tracker instance, e.g. `http://localhost:8000` |
-| `TASKTRACKER_API_TOKEN` | Yes | The `API_SECRET_TOKEN` configured on your Task-Tracker backend |
-| `DEBUG` | No | Set to `true` to log outgoing requests/responses to stderr |
+| `TASKTRACKER_API_URL` | Yes | Base URL of the Task-Tracker instance this server talks to, e.g. `http://localhost:8000` |
+| `PORT` | No | Port the HTTP server listens on. Defaults to `3000` |
+| `DEBUG` | No | Set to `true` to log outgoing Task-Tracker requests/responses to stderr |
 
-The server fails fast at startup with a clear message if either required variable is missing.
+The server fails fast at startup with a clear message if `TASKTRACKER_API_URL` is missing.
+
+**The Task-Tracker `API_SECRET_TOKEN` is supplied per-connection by each MCP client**, as a standard `Authorization: Bearer <token>` header on every request to `/mcp` — never as a server-side environment variable. The server uses whatever token arrives with a given request to talk to Task-Tracker on that caller's behalf, so different clients can be granted different Task-Tracker tokens/permissions without any server-side configuration change. A request with a missing or malformed `Authorization` header is rejected with `401` before any Task-Tracker call is made.
 
 ## Using it with an MCP client
 
-### Claude Desktop
-
-Add an entry to `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "tasktracker": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp-server-tasktracker/dist/index.js"],
-      "env": {
-        "TASKTRACKER_API_URL": "http://localhost:8000",
-        "TASKTRACKER_API_TOKEN": "your-api-secret-token"
-      }
-    }
-  }
-}
-```
+The server exposes a single endpoint, `POST /mcp` (Streamable HTTP, stateless — no server-side sessions), at whatever host/port you deployed it to. Each client config points at that URL and supplies its own token via a header.
 
 ### Claude Code
 
-Add the same server to your project or user MCP configuration (`.mcp.json` or via `claude mcp add`):
+Add to your project or user MCP configuration (`.mcp.json` or via `claude mcp add`):
 
 ```json
 {
   "mcpServers": {
     "tasktracker": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp-server-tasktracker/dist/index.js"],
-      "env": {
-        "TASKTRACKER_API_URL": "http://localhost:8000",
-        "TASKTRACKER_API_TOKEN": "your-api-secret-token"
+      "type": "http",
+      "url": "https://your-server-host:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer $TASKTRACKER_API_TOKEN"
       }
     }
   }
 }
 ```
 
-Any other MCP-compatible client should work the same way: spawn `node dist/index.js` with the two environment variables set.
+`$TASKTRACKER_API_TOKEN` is expanded from *your own* local environment when Claude Code starts — the token lives on your machine, not the server. Set it locally with `export TASKTRACKER_API_TOKEN=your-api-secret-token` (or hardcode the value directly in the `headers` block if you prefer).
+
+> **Known client bug**: some Claude Code versions have shipped with bugs where configured `headers` aren't attached to Streamable HTTP requests (see [#48514](https://github.com/anthropics/claude-code/issues/48514), [#50464](https://github.com/anthropics/claude-code/issues/50464), [#59467](https://github.com/anthropics/claude-code/issues/59467)). If the server always responds `401`, confirm your Claude Code version actually sends the header before assuming this project is misconfigured.
+
+### Claude Desktop
+
+Claude Desktop's remote MCP support varies by version — consult Anthropic's current docs for how your version accepts a custom `Authorization` header for a `url`-type server entry, then use the same `url`/token pairing as above.
+
+### Other MCP clients
+
+Any client that supports the Streamable HTTP transport with custom headers works the same way: point it at `https://your-server-host:3000/mcp` and set `Authorization: Bearer <your-tasktracker-token>`.
 
 ## Tools
 
@@ -169,8 +178,9 @@ search index to see different text than what's rendered.
 
 ## Error handling
 
+- **Missing/malformed `Authorization` header**: rejected with HTTP `401` before any tool runs or any Task-Tracker call is made.
 - **Connection failures** (Task-Tracker unreachable): returned as a clear message naming the configured URL, not a stack trace.
-- **Authentication failures** (401): returned as a message pointing at `TASKTRACKER_API_TOKEN`.
+- **Authentication failures** (Task-Tracker rejects the supplied token): returned as a clear message, without echoing the token back.
 - **Validation errors**: the API's own FastAPI/Pydantic error details are passed through as-is.
 - **Unexpected/non-JSON responses** (e.g. a reverse proxy error page instead of the API): surfaced as a clear message rather than crashing on an invalid-JSON parse.
 - **Destructive operations** (deletes): exposed as plain tools with no extra confirmation step — the same trust model as calling the API directly. Only checklists support `undo_checklist_delete`; other deletes are permanent.
@@ -178,9 +188,9 @@ search index to see different text than what's rendered.
 ## Development
 
 ```bash
-npm run dev         # run directly from source with tsx
+TASKTRACKER_API_URL=http://localhost:8000 npm run dev   # run the HTTP server directly from source with tsx
 npm run build        # compile to dist/
-npm start            # run the compiled server (dist/index.js)
+TASKTRACKER_API_URL=http://localhost:8000 npm start      # run the compiled server (dist/index.js)
 npm run typecheck    # type-check without emitting
 npm test             # run the automated test suite (mocked HTTP, no live Task-Tracker needed)
 ```

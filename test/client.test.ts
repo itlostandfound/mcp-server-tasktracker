@@ -76,7 +76,7 @@ describe("TaskTrackerClient", () => {
     await expect(client.get("/api/v1/trackers")).rejects.toMatchObject({
       kind: "auth",
       status: 401,
-      message: expect.stringContaining("TASKTRACKER_API_TOKEN"),
+      message: expect.stringContaining("Authentication failed"),
     });
   });
 
