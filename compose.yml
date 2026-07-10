@@ -1,0 +1,15 @@
+---
+services:
+  app:
+    image: itlostandfound/mcp-server-tasktracker:latest
+    container_name: mcp-server-tasktracker
+    env_file: .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - mcp-tasktracker
+
+networks:
+  mcp-tasktracker:
+    driver: bridge

@@ -28,6 +28,20 @@ docker run -d --name mcp-server-tasktracker \
 
 Note: if Task-Tracker runs on the *same* host as this container, `localhost` inside the container refers to the container itself, not the host. Use `http://host.docker.internal:8000` (Docker Desktop) or `--add-host=host.docker.internal:host-gateway` (Linux) instead.
 
+#### Docker Compose
+
+Copy `env.example.txt` to `.env` and fill in `TASKTRACKER_API_URL`, then:
+
+```bash
+docker compose up -d
+```
+
+This exposes the server on `3000:3000` directly. If you're putting it behind a domain with TLS via [Traefik](https://traefik.io/), use `compose.traefik.yml` instead (also set `MCP_DOMAIN` in `.env`, and pre-create the external network with `docker network create traefik`):
+
+```bash
+docker compose -f compose.traefik.yml up -d
+```
+
 ### From source
 
 ```bash

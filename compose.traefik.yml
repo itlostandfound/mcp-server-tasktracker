@@ -1,0 +1,23 @@
+---
+services:
+  app:
+    image: itlostandfound/mcp-server-tasktracker:latest
+    container_name: mcp-server-tasktracker
+    env_file: .env
+    restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mcp-tasktracker.rule=Host(`${MCP_DOMAIN}`)"
+      - "traefik.http.routers.mcp-tasktracker.entrypoints=https"
+      - "traefik.http.routers.mcp-tasktracker.tls=true"
+      - "traefik.http.services.mcp-tasktracker.loadbalancer.server.port=3000"
+
+networks:
+  traefik:
+    external: true
+
+# No exposed port here — Traefik reaches the container over the shared
+# traefik network and terminates TLS for it.
+# The traefik network must pre-exist:  docker network create traefik
