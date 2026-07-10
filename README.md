@@ -16,14 +16,14 @@ This server is designed to run **remotely** — one long-running instance (typic
 
 ### Docker (recommended)
 
-Pull the latest image from GitHub Container Registry and run it as a long-lived service:
+Pull the latest image from DockerHub and run it as a long-lived service:
 
 ```bash
-docker pull ghcr.io/itlostandfound/mcp-server-tasktracker:latest
+docker pull itlostandfound/mcp-server-tasktracker:latest
 docker run -d --name mcp-server-tasktracker \
   -p 3000:3000 \
   -e TASKTRACKER_API_URL=http://your-tasktracker-host:8000 \
-  ghcr.io/itlostandfound/mcp-server-tasktracker:latest
+  itlostandfound/mcp-server-tasktracker:latest
 ```
 
 Note: if Task-Tracker runs on the *same* host as this container, `localhost` inside the container refers to the container itself, not the host. Use `http://host.docker.internal:8000` (Docker Desktop) or `--add-host=host.docker.internal:host-gateway` (Linux) instead.
