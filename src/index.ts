@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type { Request, Response } from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -9,6 +12,11 @@ import { registerTaskTools } from "./tools/tasks.js";
 import { registerNoteTools } from "./tools/notes.js";
 import { registerChecklistTools } from "./tools/checklists.js";
 import { registerProjectTools } from "./tools/projects.js";
+
+const packageDir = dirname(fileURLToPath(import.meta.url));
+const { version: packageVersion } = JSON.parse(
+  readFileSync(join(packageDir, "..", "package.json"), "utf-8"),
+) as { version: string };
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -34,7 +42,7 @@ function buildServer(baseUrl: string, token: string, debug: boolean): McpServer 
 
   const server = new McpServer({
     name: "mcp-server-tasktracker",
-    version: "1.0.0",
+    version: packageVersion,
   });
 
   registerTrackerTools(server, client);
@@ -50,8 +58,11 @@ function main(): void {
   const baseUrl = requireEnv("TASKTRACKER_API_URL");
   const debug = process.env.DEBUG === "true";
   const port = Number(process.env.PORT ?? 3000);
+  const publicDomain = process.env.MCP_DOMAIN;
 
-  const app = createMcpExpressApp();
+  const app = createMcpExpressApp(
+    publicDomain ? { allowedHosts: [publicDomain] } : {},
+  );
 
   app.post("/mcp", async (req: Request, res: Response) => {
     const token = extractBearerToken(req);

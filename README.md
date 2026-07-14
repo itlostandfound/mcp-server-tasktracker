@@ -36,11 +36,13 @@ Copy `env.example.txt` to `.env` and fill in `TASKTRACKER_API_URL`, then:
 docker compose up -d
 ```
 
-This exposes the server on `3000:3000` directly. If you're putting it behind a domain with TLS via [Traefik](https://traefik.io/), use `compose.traefik.yml` instead (also set `MCP_DOMAIN` in `.env`, and pre-create the external network with `docker network create traefik`):
+This exposes the server on `3000:3000` directly. If you're putting it behind a domain with TLS via [Traefik](https://traefik.io/), use `compose.traefik.yml` instead (also set `MCP_DOMAIN` in `.env` to the bare hostname, and pre-create the external network with `docker network create traefik`):
 
 ```bash
 docker compose -f compose.traefik.yml up -d
 ```
+
+Once it's up, your MCP client connects to `https://<MCP_DOMAIN>/mcp` — don't forget the `/mcp` path, and don't put a scheme in `MCP_DOMAIN` itself (see [Configuration](#configuration)).
 
 ### From source
 
@@ -61,8 +63,11 @@ The server itself only needs to know where Task-Tracker lives — it holds no Ta
 | `TASKTRACKER_API_URL` | Yes | Base URL of the Task-Tracker instance this server talks to, e.g. `http://localhost:8000` |
 | `PORT` | No | Port the HTTP server listens on. Defaults to `3000` |
 | `DEBUG` | No | Set to `true` to log outgoing Task-Tracker requests/responses to stderr |
+| `MCP_DOMAIN` | No | Public hostname this server is reachable at (bare hostname, no scheme), e.g. `mcp-tasktracker.example.com`. Required for any public/reverse-proxied deployment — without it the server only accepts requests with `Host: localhost`/`127.0.0.1`/`::1` and rejects everything else with `403`. Also drives the Traefik router rule in `compose.traefik.yml`. |
 
 The server fails fast at startup with a clear message if `TASKTRACKER_API_URL` is missing.
+
+**The URL your MCP client actually connects to is `https://<MCP_DOMAIN>/mcp` — the `/mcp` path is required.** `MCP_DOMAIN` itself must stay a bare hostname (no scheme, no path) because it's used both to build the Traefik router rule and, verbatim, as the value checked against the request's `Host` header — a scheme or path there will break routing/host validation, not the client URL. The client-facing URL where you add `/mcp` is a separate, unrelated string; see [Using it with an MCP client](#using-it-with-an-mcp-client) below.
 
 **The Task-Tracker `API_SECRET_TOKEN` is supplied per-connection by each MCP client**, as a standard `Authorization: Bearer <token>` header on every request to `/mcp` — never as a server-side environment variable. The server uses whatever token arrives with a given request to talk to Task-Tracker on that caller's behalf, so different clients can be granted different Task-Tracker tokens/permissions without any server-side configuration change. A request with a missing or malformed `Authorization` header is rejected with `401` before any Task-Tracker call is made.
 

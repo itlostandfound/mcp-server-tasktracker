@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.2] - 2026-07-14
+
+### Fixed
+
+- The server now allows its public `MCP_DOMAIN` past the MCP SDK's Host-header/DNS-rebinding
+  check. Previously, any remote deployment (Traefik or otherwise) was rejected with `403 Invalid
+  Host` for every request, because `createMcpExpressApp()` was left on its localhost-only default
+  regardless of how the server was actually reachable. Set `MCP_DOMAIN` in `.env` to the server's
+  public hostname to fix.
+
 ## [1.1.0] - 2026-07-05
 
 ### Added
